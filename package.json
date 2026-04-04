@@ -1,0 +1,35 @@
+{
+  "name": "sunbull-ai-platform",
+  "version": "3.0.0",
+  "description": "Sunbull AI - Full-stack solar sales automation platform",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/frontend",
+    "packages/backend",
+    "packages/ml-service",
+    "packages/shared",
+    "packages/admin"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm start --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "db:migrate": "npm run migrate -w @sunbull/backend",
+    "db:seed": "npm run seed -w @sunbull/backend"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

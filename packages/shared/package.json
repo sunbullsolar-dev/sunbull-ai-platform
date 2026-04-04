@@ -1,0 +1,23 @@
+{
+  "name": "@sunbull/shared",
+  "version": "1.0.0",
+  "description": "Shared types and constants for Sunbull AI platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "sunbull",
+    "types",
+    "constants",
+    "shared"
+  ],
+  "author": "Sunbull AI",
+  "license": "MIT"
+}

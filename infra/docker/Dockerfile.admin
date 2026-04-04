@@ -1,0 +1,22 @@
+# Admin Dashboard - React
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy root package files
+COPY package.json package-lock.json ./
+
+# Copy shared package
+COPY packages/shared ./packages/shared
+
+# Copy admin package
+COPY packages/admin ./packages/admin
+
+# Install dependencies
+RUN npm ci
+
+WORKDIR /app/packages/admin
+
+EXPOSE 3001
+
+CMD ["npm", "run", "dev"]

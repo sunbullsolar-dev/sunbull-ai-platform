@@ -1,0 +1,184 @@
+version: '3.9'
+
+services:
+  # ============================================================================
+  # DATABASE
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: sunbull-postgres
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-sunbull}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-sunbull_password}
+      POSTGRES_DB: ${DATABASE_NAME:-sunbull_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-sunbull}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # CACHING & SESSION STORE
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sunbull-redis
+    command: redis-server --appendonly yes --requirepass ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # BACKEND API
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: ./infra/docker/Dockerfile.backend
+    container_name: sunbull-backend
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${DATABASE_USER:-sunbull}:${DATABASE_PASSWORD:-sunbull_password}@postgres:5432/${DATABASE_NAME:-sunbull_db}
+      REDIS_URL: redis://redis:6379
+      PORT: ${BACKEND_PORT:-4000}
+      NREL_PVWATTS_API_KEY: ${NREL_PVWATTS_API_KEY}
+      GOOGLE_SOLAR_API_KEY: ${GOOGLE_SOLAR_API_KEY}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      DOCUSIGN_INTEGRATION_KEY: ${DOCUSIGN_INTEGRATION_KEY}
+      DOCUSIGN_ACCOUNT_ID: ${DOCUSIGN_ACCOUNT_ID}
+      GOODLEAP_API_KEY: ${GOODLEAP_API_KEY}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
+      HUBSPOT_API_KEY: ${HUBSPOT_API_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_STORAGE_BUCKET: ${GCP_STORAGE_BUCKET}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:3001}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./packages/backend:/app
+      - /app/node_modules
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+    command: npm run dev
+
+  # ============================================================================
+  # FRONTEND (Next.js)
+  # ============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: ./infra/docker/Dockerfile.frontend
+    container_name: sunbull-frontend
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:3001
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./packages/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+    command: npm run dev
+
+  # ============================================================================
+  # ML SERVICE (Python FastAPI)
+  # ============================================================================
+  ml-service:
+    build:
+      context: ./packages/ml-service
+      dockerfile: ../../infra/docker/Dockerfile.ml-service
+    container_name: sunbull-ml-service
+    environment:
+      PYTHONUNBUFFERED: 1
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      NREL_PVWATTS_API_KEY: ${NREL_PVWATTS_API_KEY}
+      BACKEND_URL: http://backend:4000
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend
+    volumes:
+      - ./packages/ml-service:/app
+      - /app/__pycache__
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ============================================================================
+  # ADMIN DASHBOARD (React)
+  # ============================================================================
+  admin:
+    build:
+      context: .
+      dockerfile: ./infra/docker/Dockerfile.admin
+    container_name: sunbull-admin
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      REACT_APP_API_URL: http://localhost:4000/api
+      REACT_APP_AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      REACT_APP_AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    volumes:
+      - ./packages/admin:/app
+      - /app/node_modules
+    networks:
+      - sunbull-network
+    restart: unless-stopped
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  sunbull-network:
+    driver: bridge

@@ -1,0 +1,11 @@
+{
+  "name": "@sunbull/ml-service",
+  "version": "3.0.0",
+  "description": "Sunbull AI Platform - Python FastAPI ML Service",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn main:app --reload",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8000",
+    "test": "pytest"
+  }
+}
