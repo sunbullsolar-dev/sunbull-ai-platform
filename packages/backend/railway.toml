@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npx tsc"
+buildCommand = "npm install --include=dev && npm run build"
 watchPatterns = ["packages/backend/**"]
 
 [deploy]
