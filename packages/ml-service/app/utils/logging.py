@@ -28,7 +28,7 @@ def setup_logging() -> None:
     # Configure stdlib logging
     logging.basicConfig(
         format="%(message)s",
-        level=settings.log_level,
+            level=settings.log_level.upper(),
     )
 
 
