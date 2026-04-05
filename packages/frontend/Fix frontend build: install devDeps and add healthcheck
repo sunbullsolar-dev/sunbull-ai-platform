@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npx next build"
+buildCommand = "npm install --include=dev && npx next build"
 watchPatterns = ["packages/frontend/**"]
 
 [deploy]
