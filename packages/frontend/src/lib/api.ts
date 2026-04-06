@@ -49,8 +49,29 @@ export const apiClient = {
     state: string;
     utilityProvider: string;
     monthlyBill: number;
+    billUnit?: 'dollar' | 'kwh';
     billType?: 'dollar' | 'kwh';
-  }) => api.post('/v1/leads', data),
+    utilityBillFile?: File;
+    tcpaConsent?: boolean;
+  }) => {
+    // Backend expects firstName/lastName separately and tcpaConsent.
+    const trimmed = (data.fullName || '').trim();
+    const parts = trimmed.split(/\s+/);
+    const firstName = parts.shift() || trimmed;
+    const lastName = parts.join(' ') || firstName;
+    return api.post('/v1/leads', {
+      firstName,
+      lastName,
+      email: data.email,
+      phone: data.phone,
+      address: data.address,
+      state: data.state,
+      utilityProvider: data.utilityProvider,
+      monthlyBill: data.monthlyBill,
+      billUnit: data.billUnit ?? data.billType,
+      tcpaConsent: data.tcpaConsent ?? true,
+    });
+  },
 
   // Proposals
   getProposal: (id: string) => api.get(`/v1/proposals/${id}`),
