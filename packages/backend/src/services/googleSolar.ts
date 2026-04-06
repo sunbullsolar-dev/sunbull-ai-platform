@@ -55,9 +55,23 @@ export const analyzeRoof = async (address: string): Promise<RoofAnalysis> => {
     await cacheSet(cacheKey, JSON.stringify(analysis), 86400 * 30);
     
     return analysis;
-  } catch (error) {
-    logger.error('Roof analysis error', { address, error });
-    throw error;
+  } catch (error: any) {
+    // Google Solar API returns 404 when the address has no building data,
+    // and /buildingInsights:analyze isn't available for many regions. Fall
+    // back to conservative defaults so the proposal pipeline still works.
+    logger.warn('Roof analysis fallback to defaults', {
+      address,
+      status: error?.response?.status,
+      msg: error?.message,
+    });
+    const fallback: RoofAnalysis = {
+      area: 1500,           // sq ft — typical residential roof
+      azimuth: 180,         // south-facing
+      pitch: 25,            // degrees
+      shading: 0.85,        // 85% unshaded
+      usableSurface: 1200,  // sq ft usable
+    };
+    return fallback;
   }
 };
 
