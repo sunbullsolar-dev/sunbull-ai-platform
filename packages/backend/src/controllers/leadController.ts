@@ -26,21 +26,29 @@ export const createLead = async (req: Request, res: Response) => {
       firstName = firstName || parts[0] || 'Homeowner';
       lastName = lastName || parts.slice(1).join(' ') || '-';
     }
+    // Tesla-style ghost lead: only address + bill required upfront.
+    // Contact info is captured later at the checkout/deposit step.
+    if (!address) {
+      return res.status(400).json(errorResponse('Address is required', 400));
+    }
+    if (!firstName) firstName = 'Pending';
     if (!lastName) lastName = '-';
-
     const leadId = uuidv4();
+    if (!email) email = `pending-${leadId}@sunbull.pending`;
+    if (!phone) phone = '';
+
     const tenantId = req.tenantId!;
 
-    const existingLead = await query(
-      'SELECT id FROM leads WHERE email = $1 AND address = $2 AND tenant_id = $3',
-      [email, address, tenantId]
-    );
-
-    if (existingLead.rows.length > 0) {
-      logger.warn('Duplicate lead attempt', { email, address });
-      return res.status(409).json(
-        errorResponse('Lead already exists', 409)
+    // Only dedupe when we have a real email
+    if (!email.endsWith('@sunbull.pending')) {
+      const existingLead = await query(
+        'SELECT id FROM leads WHERE email = $1 AND address = $2 AND tenant_id = $3',
+        [email, address, tenantId]
       );
+      if (existingLead.rows.length > 0) {
+        logger.warn('Duplicate lead attempt', { email, address });
+        return res.status(409).json(errorResponse('Lead already exists', 409));
+      }
     }
 
     const billAmount = typeof monthlyBill === 'number' ? monthlyBill : null;
@@ -71,27 +79,28 @@ export const createLead = async (req: Request, res: Response) => {
       ]
     );
 
-    try {
-      await createContact(email, firstName, lastName, phone, address);
-    } catch (err) {
-      logger.warn('HubSpot sync failed', { email });
-    }
+    const isGhost = email.endsWith('@sunbull.pending');
+    if (!isGhost) {
+      try {
+        await createContact(email, firstName, lastName, phone, address);
+      } catch (err) {
+        logger.warn('HubSpot sync failed', { email });
+      }
 
-    const welcomeHtml = `
-      <h1>Welcome to Sunbull Solar!</h1>
-      <p>Hi ${firstName},</p>
-      <p>Thank you for your interest in solar! We've received your information and are analyzing your home for the perfect solar solution.</p>
-      <p>You'll hear from us within 24 hours with your personalized proposal.</p>
-    `;
-
-    try {
-      await sendEmail({
-        to: email,
-        subject: 'Welcome to Sunbull Solar',
-        html: welcomeHtml,
-      });
-    } catch (err) {
-      logger.warn('Welcome email failed', { email });
+      const welcomeHtml = `
+        <h1>Welcome to Sunbull Solar!</h1>
+        <p>Hi ${firstName},</p>
+        <p>Thank you for your interest in solar! We're preparing your personalized proposal.</p>
+      `;
+      try {
+        await sendEmail({
+          to: email,
+          subject: 'Welcome to Sunbull Solar',
+          html: welcomeHtml,
+        });
+      } catch (err) {
+        logger.warn('Welcome email failed', { email });
+      }
     }
 
     logger.info('Lead created', { leadId, email, tenantId });
@@ -158,6 +167,52 @@ export const getLead = async (req: Request, res: Response) => {
   } catch (err) {
     logger.error('Get lead error', { error: err });
     res.status(500).json(errorResponse('Internal server error', 500));
+  }
+};
+
+export const updateLeadContact = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.tenantId!;
+    const { firstName, lastName, email, phone, tcpaConsent } = req.body as any;
+
+    if (!firstName || !email || !phone) {
+      return res.status(400).json(errorResponse('firstName, email, phone are required', 400));
+    }
+
+    await query(
+      `UPDATE leads SET
+        first_name = $1,
+        last_name = COALESCE($2, last_name),
+        email = $3,
+        phone = $4,
+        tcpa_consent = $5,
+        tcpa_consent_date = COALESCE(tcpa_consent_date, $6),
+        updated_at = $7
+      WHERE id = $8 AND tenant_id = $9`,
+      [
+        firstName,
+        lastName || '-',
+        email,
+        phone,
+        tcpaConsent === true,
+        tcpaConsent === true ? new Date() : null,
+        new Date(),
+        id,
+        tenantId,
+      ]
+    );
+
+    try {
+      await createContact(email, firstName, lastName || '-', phone, '');
+    } catch (err) {
+      logger.warn('HubSpot sync failed on contact update', { email });
+    }
+
+    res.json(success({ id, email, status: 'contact_captured' }));
+  } catch (err: any) {
+    logger.error('Update lead contact error', { error: err });
+    res.status(500).json(errorResponse(`Update contact error: ${err?.message || err}`, 500));
   }
 };
 

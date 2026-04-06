@@ -1,147 +1,127 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { motion } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
-import Select from '@/components/ui/Select';
 import { apiClient } from '@/lib/api';
-import { Upload, Check } from 'lucide-react';
 
-const schema = z.object({
-  fullName: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().regex(/^\d{10}$/, 'Phone must be 10 digits'),
-  address: z.string().min(5, 'Please enter a valid address'),
-  state: z.string().min(2, 'Please select a state'),
-  utilityProvider: z.string().min(1, 'Please select a utility provider'),
-  monthlyBill: z.number().min(10, 'Bill must be at least $10'),
-  billUnit: z.enum(['dollar', 'kwh']),
-  tcpaConsent: z.boolean().refine((val) => val === true, {
-    message: 'You must agree to the TCPA consent',
-  }),
-});
+// Google Places loader — reuses the same key the backend uses for Solar/Geocoding
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '';
 
-type FormData = z.infer<typeof schema>;
+declare global {
+  interface Window {
+    google?: any;
+    __sunbullPlacesLoading__?: Promise<void>;
+  }
+}
 
-const states = [
-  { value: 'CA', label: 'California' },
-  { value: 'TX', label: 'Texas' },
-  { value: 'NY', label: 'New York' },
-  { value: 'FL', label: 'Florida' },
-];
-
-const utilityProvidersByState: Record<string, { value: string; label: string }[]> = {
-  CA: [
-    { value: 'LADWP', label: 'LADWP (Los Angeles Dept of Water & Power)' },
-    { value: 'SCE', label: 'Southern California Edison' },
-    { value: 'PG&E', label: 'Pacific Gas & Electric' },
-    { value: 'SDGE', label: 'San Diego Gas & Electric' },
-  ],
-  TX: [
-    { value: 'TXU', label: 'TXU Energy' },
-    { value: 'NRG', label: 'NRG Energy' },
-  ],
-  NY: [
-    { value: 'PSEG', label: 'Public Service Enterprise Group' },
-    { value: 'Con Ed', label: 'Consolidated Edison' },
-  ],
-  FL: [
-    { value: 'FPL', label: 'Florida Power & Light' },
-    { value: 'TECO', label: 'Tampa Electric Co.' },
-  ],
-};
+function loadGoogleMaps(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (window.google?.maps?.places) return Promise.resolve();
+  if (window.__sunbullPlacesLoading__) return window.__sunbullPlacesLoading__;
+  if (!GOOGLE_MAPS_KEY) {
+    return Promise.reject(new Error('NEXT_PUBLIC_GOOGLE_MAPS_KEY is not set'));
+  }
+  window.__sunbullPlacesLoading__ = new Promise<void>((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places&v=weekly`;
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Google Maps'));
+    document.head.appendChild(s);
+  });
+  return window.__sunbullPlacesLoading__;
+}
 
 const GetQuotePage: React.FC = () => {
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [address, setAddress] = useState('');
+  const [billUnit, setBillUnit] = useState<'dollar' | 'kwh'>('dollar');
+  const [billAmount, setBillAmount] = useState<number>(200);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [utilityFile, setUtilityFile] = useState<File | null>(null);
-  const [selectedState, setSelectedState] = useState('CA');
+  const [placesReady, setPlacesReady] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    watch,
-    formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      state: 'CA',
-      utilityProvider: 'SCE',
-      billUnit: 'dollar',
-      monthlyBill: 150,
-      tcpaConsent: false,
-    },
-  });
-
-  const state = watch('state');
-  const billUnit = watch('billUnit');
-  const monthlyBill = watch('monthlyBill');
-
-  const onSubmit = async (data: FormData) => {
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const response = await apiClient.createLead({
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        address: data.address,
-        state: data.state,
-        utilityProvider: data.utilityProvider,
-        monthlyBill: data.monthlyBill,
-        billUnit: data.billUnit,
-        utilityBillFile: utilityFile || undefined,
-        tcpaConsent: data.tcpaConsent,
+  useEffect(() => {
+    loadGoogleMaps()
+      .then(() => {
+        if (!inputRef.current || !window.google?.maps?.places) return;
+        const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: ['us'] },
+          fields: ['formatted_address', 'geometry', 'address_components'],
+        });
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          if (place?.formatted_address) {
+            setAddress(place.formatted_address);
+          }
+        });
+        setPlacesReady(true);
+      })
+      .catch((e) => {
+        // still usable as plain text field
+        console.warn('Places autocomplete unavailable:', e?.message);
       });
+  }, []);
 
-      const leadId = response.data?.data?.id || response.data?.id;
-      if (!leadId) {
-        throw new Error('Lead created but no ID returned');
-      }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!address || address.length < 8) {
+      setError('Please enter your home address.');
+      return;
+    }
+    if (!billAmount || billAmount < 10) {
+      setError(billUnit === 'dollar' ? 'Please enter a monthly bill amount.' : 'Please enter your monthly kWh usage.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const leadResp = await apiClient.quickQuote({
+        address,
+        monthlyBill: billAmount,
+        billUnit,
+      });
+      const leadId = leadResp.data?.data?.id || leadResp.data?.id;
+      if (!leadId) throw new Error('Quote not created');
+
       const genResp = await apiClient.generateProposal(leadId);
       const proposalId =
-        genResp.data?.data?.id ||
-        genResp.data?.data?.proposalId ||
-        genResp.data?.id;
-      if (!proposalId) {
-        throw new Error('Proposal generation did not return an ID');
-      }
+        genResp.data?.data?.id || genResp.data?.data?.proposalId || genResp.data?.id;
+      if (!proposalId) throw new Error('Proposal not generated');
+
       router.push(`/proposal/${proposalId}`);
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'An unexpected error occurred';
-      setError(message);
+      const msg = err?.response?.data?.message || err?.message || 'Something went wrong';
+      setError(msg);
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-dark-bg py-12">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-dark-bg flex items-center justify-center py-12">
+      <div className="max-w-xl w-full px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.5 }}
         >
-          {/* Header */}
-          <div className="text-center mb-12">
-            <h1 className="font-bebas text-4xl sm:text-5xl text-sun tracking-widest mb-4">
-              GET YOUR QUOTE
+          <div className="text-center mb-8">
+            <h1 className="font-bebas text-4xl sm:text-5xl text-sun tracking-widest mb-3">
+              DESIGN YOUR SOLAR SYSTEM
             </h1>
             <p className="text-gray-400">
-              Just 120 seconds to your personalized solar proposal
+              Enter your home address and average electricity bill to get a quote
+              and view your savings.
             </p>
           </div>
 
-          {/* Form Card */}
           <Card className="p-8">
             {error && (
               <div className="mb-6 p-4 bg-red-900/20 border border-red-500 rounded-lg text-red-400 text-sm">
@@ -149,223 +129,80 @@ const GetQuotePage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              {/* Full Name */}
-              <Input
-                label="Full Name"
-                subLabel="How should we address you?"
-                placeholder="John Smith"
-                {...register('fullName')}
-                error={errors.fullName?.message}
-              />
-
-              {/* Email */}
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="john@example.com"
-                {...register('email')}
-                error={errors.email?.message}
-              />
-
-              {/* Phone */}
-              <Input
-                label="Mobile Phone"
-                type="tel"
-                placeholder="(555) 123-4567"
-                {...register('phone')}
-                error={errors.phone?.message}
-              />
-
-              {/* Address */}
-              <Input
-                label="Property Address"
-                placeholder="123 Sunny St, Los Angeles, CA 90001"
-                {...register('address')}
-                error={errors.address?.message}
-              />
-
-              {/* State */}
-              <Controller
-                name="state"
-                control={control}
-                render={({ field }) => (
-                  <Select
-                    label="State"
-                    options={states}
-                    {...field}
-                    onChange={(e) => {
-                      field.onChange(e);
-                      setSelectedState(e.target.value);
-                    }}
-                    error={errors.state?.message}
-                  />
-                )}
-              />
-
-              {/* Utility Provider */}
-              <Controller
-                name="utilityProvider"
-                control={control}
-                render={({ field }) => (
-                  <Select
-                    label="Utility Provider"
-                    options={
-                      utilityProvidersByState[selectedState] || []
-                    }
-                    {...field}
-                    error={errors.utilityProvider?.message}
-                  />
-                )}
-              />
-
-              {/* Monthly Bill */}
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">Monthly Bill Amount</label>
-                  <div className="flex gap-2">
-                    {['dollar', 'kwh'].map((unit) => (
-                      <button
-                        key={unit}
-                        type="button"
-                        onClick={() => {
-                          const controller = register('billUnit');
-                          // Toggle the unit by updating the form
-                          document
-                            .querySelector(
-                              `input[value="${unit === 'dollar' ? 'kwh' : 'dollar'}"]`
-                            )
-                            ?.dispatchEvent(new Event('change', { bubbles: true }));
-                        }}
-                        className={`text-xs px-2 py-1 rounded transition-colors ${
-                          billUnit === unit
-                            ? 'bg-sun text-dark-bg'
-                            : 'bg-surface border border-border text-gray-300'
-                        }`}
-                      >
-                        {unit === 'dollar' ? '$' : 'kWh'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Input
-                  type="number"
-                  placeholder={billUnit === 'dollar' ? '150' : '1200'}
-                  min="0"
-                  {...register('monthlyBill', { valueAsNumber: true })}
-                  error={errors.monthlyBill?.message}
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Your Address
+                </label>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Start typing your address…"
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun"
+                  autoComplete="off"
                 />
-              </div>
-
-              {/* Utility Bill Upload (Optional) */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Utility Bill (Optional)
-                </label>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={(e) => setUtilityFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                    id="utility-file"
-                  />
-                  <label
-                    htmlFor="utility-file"
-                    className="flex items-center justify-center gap-2 px-4 py-6 bg-surface-2 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-sun transition-colors"
-                  >
-                    <Upload className="w-5 h-5 text-sun" />
-                    <div className="text-center">
-                      {utilityFile ? (
-                        <div className="flex items-center gap-2">
-                          <Check className="w-4 h-4 text-green-400" />
-                          <span className="text-sm text-gray-300">
-                            {utilityFile.name}
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-sm font-medium text-gray-300">
-                            Drop your bill or click to upload
-                          </p>
-                          <p className="text-xs text-gray-500">PDF or image file</p>
-                        </>
-                      )}
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* TCPA Consent */}
-              <div className="bg-surface-2 rounded-lg border border-border p-4">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...register('tcpaConsent')}
-                    className="mt-1 w-4 h-4 accent-sun"
-                  />
-                  <span className="text-xs text-gray-400">
-                    By checking this box, you agree that Sunbull AI and its partners may
-                    contact you at the number above regarding your solar inquiry, including
-                    via autodialed or pre-recorded calls/texts. This is in accordance with
-                    the TCPA. Message and data rates may apply.
-                  </span>
-                </label>
-                {errors.tcpaConsent && (
-                  <p className="mt-2 text-xs text-red-400">
-                    {errors.tcpaConsent.message}
+                {!placesReady && GOOGLE_MAPS_KEY && (
+                  <p className="mt-1 text-xs text-gray-500">Loading address autocomplete…</p>
+                )}
+                {!GOOGLE_MAPS_KEY && (
+                  <p className="mt-1 text-xs text-yellow-500">
+                    Address autocomplete disabled (NEXT_PUBLIC_GOOGLE_MAPS_KEY not set).
                   </p>
                 )}
               </div>
 
-              {/* Submit Button */}
-              <Button
-                fullWidth
-                size="lg"
-                type="submit"
-                isLoading={submitting}
-              >
-                Get My Solar Proposal
+              <div>
+                <div className="flex items-baseline justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-300">
+                    {billUnit === 'dollar' ? 'Average Electric Bill' : 'Average Monthly Consumption'}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setBillUnit(billUnit === 'dollar' ? 'kwh' : 'dollar')}
+                    className="text-xs text-sun underline"
+                  >
+                    {billUnit === 'dollar'
+                      ? 'Know your average monthly consumption? Enter your kWh'
+                      : 'Know your average monthly bill? Enter your bill amount'}
+                  </button>
+                </div>
+                <div className="relative">
+                  {billUnit === 'dollar' && (
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  )}
+                  <input
+                    type="number"
+                    min={0}
+                    step={billUnit === 'dollar' ? 5 : 50}
+                    value={billAmount}
+                    onChange={(e) => setBillAmount(Number(e.target.value))}
+                    className={`w-full py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun ${
+                      billUnit === 'dollar' ? 'pl-8 pr-16' : 'px-4 pr-20'
+                    }`}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                    {billUnit === 'dollar' ? '/mo' : 'kWh /mo'}
+                  </span>
+                </div>
+              </div>
+
+              <Button fullWidth size="lg" type="submit" isLoading={submitting}>
+                {submitting ? (
+                  <span className="flex items-center gap-2 justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Designing your system…
+                  </span>
+                ) : (
+                  'See System Recommendation'
+                )}
               </Button>
 
               <p className="text-xs text-gray-500 text-center">
-                Takes about 2 minutes. No strings attached.
+                No contact info required. See your design, savings, and financing options first.
               </p>
             </form>
           </Card>
-
-          {/* Info Section */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                title: 'Fast',
-                desc: 'Get your proposal in seconds, not weeks',
-              },
-              {
-                title: 'Accurate',
-                desc: 'AI analyzes your roof and utility rates',
-              },
-              {
-                title: 'Private',
-                desc: 'We never sell your info to third parties',
-              },
-            ].map((item) => (
-              <motion.div
-                key={item.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                viewport={{ once: true }}
-              >
-                <Card>
-                  <h3 className="font-bebas text-lg text-sun tracking-wide mb-2">
-                    {item.title}
-                  </h3>
-                  <p className="text-sm text-gray-400">{item.desc}</p>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
         </motion.div>
       </div>
     </div>

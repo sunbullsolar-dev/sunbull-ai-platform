@@ -73,6 +73,32 @@ export const apiClient = {
     });
   },
 
+  // Tesla-style quick quote — address + bill only, no contact
+  quickQuote: (data: {
+    address: string;
+    monthlyBill: number;
+    billUnit: 'dollar' | 'kwh';
+    utilityProvider?: string;
+  }) =>
+    api.post('/v1/leads', {
+      address: data.address,
+      monthlyBill: data.monthlyBill,
+      billUnit: data.billUnit,
+      utilityProvider: data.utilityProvider,
+    }),
+
+  // Contact + TCPA capture at the checkout/deposit step
+  updateLeadContact: (
+    leadId: string,
+    data: {
+      firstName: string;
+      lastName?: string;
+      email: string;
+      phone: string;
+      tcpaConsent: boolean;
+    }
+  ) => api.patch(`/v1/leads/${leadId}/contact`, data),
+
   // Proposals
   getProposal: (id: string) => api.get(`/v1/proposals/${id}`),
   checkProposalStatus: (id: string) => api.get(`/v1/proposals/${id}/status`),

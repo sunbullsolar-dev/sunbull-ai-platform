@@ -63,6 +63,20 @@ app.use(errorHandler);
   try {
     await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS monthly_bill FLOAT`);
     await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS bill_unit VARCHAR(10)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS home_ownership VARCHAR(20)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS home_type VARCHAR(30)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS credit_range VARCHAR(20)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS timeline VARCHAR(30)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS roof_shading VARCHAR(20)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS roof_age VARCHAR(20)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS formatted_address TEXT`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS zip_code VARCHAR(10)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(2)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64)`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS user_agent TEXT`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_source VARCHAR(50)`);
     logger.info('Schema bootstrap complete');
   } catch (e: any) {
     logger.warn('Schema bootstrap failed (continuing)', { msg: e?.message });
