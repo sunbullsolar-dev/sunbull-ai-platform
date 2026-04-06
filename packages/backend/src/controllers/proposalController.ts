@@ -32,9 +32,10 @@ export const generateProposal = async (req: Request, res: Response) => {
       const roofAnalysis = await analyzeRoof(lead.address);
       logger.debug('Roof analysis complete', { roofAnalysis });
 
-      // Resolve ZIP from geocoded address fallback to trailing token
-      const zipMatch = (lead.address || '').match(/\b(\d{5})(?:-\d{4})?\b/);
-      const zipCode = zipMatch ? zipMatch[1] : '';
+      // Resolve ZIP: take the LAST 5-digit token in the address, not the first
+      // (first is typically the street number, e.g. "21922 Gresham St...91304").
+      const zipMatches = [...(lead.address || '').matchAll(/\b(\d{5})(?:-\d{4})?\b/g)];
+      const zipCode = zipMatches.length ? zipMatches[zipMatches.length - 1][1] : '';
 
       // Real utility tariff lookup
       const utilityData = await lookupUtilityRates(lead.utility || null, zipCode);
