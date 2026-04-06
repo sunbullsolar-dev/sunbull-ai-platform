@@ -102,8 +102,19 @@ const GetQuotePage: React.FC = () => {
         tcpaConsent: data.tcpaConsent,
       });
 
-      const proposalId = response.data.proposalId;
-      router.push(`/get-quote/processing?proposalId=${proposalId}`);
+      const leadId = response.data?.data?.id || response.data?.id;
+      if (!leadId) {
+        throw new Error('Lead created but no ID returned');
+      }
+      const genResp = await apiClient.generateProposal(leadId);
+      const proposalId =
+        genResp.data?.data?.id ||
+        genResp.data?.data?.proposalId ||
+        genResp.data?.id;
+      if (!proposalId) {
+        throw new Error('Proposal generation did not return an ID');
+      }
+      router.push(`/proposal/${proposalId}`);
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'An unexpected error occurred';
       setError(message);

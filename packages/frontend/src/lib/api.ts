@@ -76,6 +76,7 @@ export const apiClient = {
   // Proposals
   getProposal: (id: string) => api.get(`/v1/proposals/${id}`),
   checkProposalStatus: (id: string) => api.get(`/v1/proposals/${id}/status`),
+  generateProposal: (leadId: string) => api.post('/v1/proposals/generate', { leadId }),
 
   // Checkout
   selectPaymentOption: (proposalId: string, optionId: string) =>
