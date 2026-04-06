@@ -56,13 +56,25 @@ export const generateProposal = async (req: Request, res: Response) => {
       annualUsage = Math.round(annualUsage);
       logger.info('Annual usage resolved', { annualUsage, billUnit: lead.bill_unit });
 
-      // System size: usage ÷ specific yield, bounded by usable roof
-      // (70 sq ft / kW ≈ 6.5 m² / kW)
-      const byUsage = annualUsage / 1500;
+      // System size: target >=110% offset whenever roof allows.
+      // 1 kW ≈ 1,500 kWh/yr specific yield; ~6.5 m² / kW usable roof.
+      // Roof is the only hard ceiling — we only undersize below 110% if the
+      // roof physically can't fit it.
+      const OFFSET_TARGET = 1.10;
+      const targetByUsage = (annualUsage / 1500) * OFFSET_TARGET;
       const byRoof = (roofAnalysis.usableSurface || 100) / 6.5;
       const systemSize = Math.round(
-        Math.max(3, Math.min(15, Math.min(byUsage, byRoof))) * 10
+        Math.max(3, Math.min(targetByUsage, byRoof)) * 10
       ) / 10;
+      const effectiveOffset = Math.round(((systemSize * 1500) / annualUsage) * 100);
+      logger.info('System sized', {
+        annualUsage,
+        targetByUsage: Math.round(targetByUsage * 10) / 10,
+        roofMax: Math.round(byRoof * 10) / 10,
+        systemSize,
+        effectiveOffset,
+        roofLimited: byRoof < targetByUsage,
+      });
 
       // Real PVWatts call at geocoded lat/lng
       const pvData = await calculateProduction(
