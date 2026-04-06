@@ -104,8 +104,9 @@ const GetQuotePage: React.FC = () => {
 
       const proposalId = response.data.proposalId;
       router.push(`/get-quote/processing?proposalId=${proposalId}`);
-    } catch (err) {
-      setError(apiClient.getErrorMessage(err));
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'An unexpected error occurred';
+      setError(message);
       setSubmitting(false);
     }
   };

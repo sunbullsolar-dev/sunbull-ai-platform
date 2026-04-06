@@ -14,7 +14,7 @@ try {
     database: config.database.database,
     max: config.database.poolSize,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 3000,
+    connectionTimeoutMillis: 5000,
   });
 
   pool.on('error', (err) => {
@@ -23,9 +23,21 @@ try {
   });
 
   pool.on('connect', () => {
-    dbAvailable = true;
-    logger.info('Database connection established');
+    if (!dbAvailable) {
+      dbAvailable = true;
+      logger.info('Database connection established');
+    }
   });
+
+  // Eagerly test the connection so dbAvailable is set before the first request
+  pool.query('SELECT 1')
+    .then(() => {
+      dbAvailable = true;
+      logger.info('Database connection verified on startup');
+    })
+    .catch((err) => {
+      logger.warn('Database not available at startup', { err: err.message });
+    });
 } catch (err) {
   logger.warn('Could not create database pool — running without database');
 }
@@ -43,11 +55,15 @@ const memoryStore: Record<string, any[]> = {
 export const isDbAvailable = () => dbAvailable;
 
 export const query = async (text: string, params?: any[]): Promise<any> => {
-  if (pool && dbAvailable) {
+  if (pool) {
     const start = Date.now();
     try {
       const result = await pool.query(text, params);
       const duration = Date.now() - start;
+      if (!dbAvailable) {
+        dbAvailable = true;
+        logger.info('Database connection recovered');
+      }
       if (duration > 1000) {
         logger.warn('Slow query detected', { text, duration });
       }

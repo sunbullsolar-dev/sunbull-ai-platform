@@ -55,7 +55,7 @@ const ProcessingPage: React.FC = () => {
           setError(status.errorMessage || 'Failed to generate proposal');
         }
       } catch (err) {
-        setError(apiClient.getErrorMessage(err));
+        setError((err as any)?.response?.data?.message || (err as Error)?.message || 'An unexpected error occurred');
       }
     };
 

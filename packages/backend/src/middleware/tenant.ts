@@ -61,12 +61,17 @@ export const tenantMiddleware = async (
     }
 
     if (!tenantId) {
-      // In development, allow requests without tenant
-      if (process.env.NODE_ENV === 'development') {
+      // Fall back to DEFAULT_TENANT_ID if set (useful for Railway/cloud deployments
+      // where the subdomain doesn't match the tenant subdomain in the database)
+      if (process.env.DEFAULT_TENANT_ID) {
+        tenantId = process.env.DEFAULT_TENANT_ID;
+      } else if (process.env.NODE_ENV === 'development') {
+        // In development, allow requests without tenant
         req.tenantId = 'default';
         return next();
+      } else {
+        return res.status(400).json(errorResponse('Tenant not found', 400));
       }
-      return res.status(400).json(errorResponse('Tenant not found', 400));
     }
 
     const tenantCached = await cacheGet(`tenant:${tenantId}`);

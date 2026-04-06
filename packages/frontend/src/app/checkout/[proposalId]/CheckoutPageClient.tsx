@@ -34,7 +34,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
       await apiClient.selectPaymentOption(proposalId, selectedOption);
       setStep('summary');
     } catch (err) {
-      setError(apiClient.getErrorMessage(err));
+      setError((err as any)?.response?.data?.message || (err as Error)?.message || 'An unexpected error occurred');
     }
     setLoading(false);
   };
@@ -51,7 +51,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
         setStep('inspection');
       }, 1000);
     } catch (err) {
-      setError(apiClient.getErrorMessage(err));
+      setError((err as any)?.response?.data?.message || (err as Error)?.message || 'An unexpected error occurred');
     }
     setLoading(false);
   };
@@ -63,7 +63,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
       const response = await apiClient.scheduleInspection(proposalId, date, time);
       setStep('welcome');
     } catch (err) {
-      setError(apiClient.getErrorMessage(err));
+      setError((err as any)?.response?.data?.message || (err as Error)?.message || 'An unexpected error occurred');
     }
     setLoading(false);
   };
