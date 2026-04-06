@@ -167,7 +167,9 @@ export const getProposal = async (req: Request, res: Response) => {
     const tenantId = req.tenantId!;
 
     const proposal = await query(
-      'SELECT * FROM proposals WHERE id = $1 AND tenant_id = $2',
+      `SELECT p.*, l.first_name, l.last_name, l.email, l.address
+       FROM proposals p LEFT JOIN leads l ON l.id = p.lead_id
+       WHERE p.id = $1 AND p.tenant_id = $2`,
       [id, tenantId]
     );
 
