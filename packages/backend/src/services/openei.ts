@@ -61,9 +61,9 @@ export const lookupUtilityRates = async (
     await cacheSet(cacheKey, JSON.stringify(utilityRate), 86400 * 30);
     
     return utilityRate;
-  } catch (error) {
-    logger.error('Utility rate lookup error', { zipCode, error });
-    throw error;
+  } catch (error: any) {
+    logger.warn('Utility rate lookup fallback', { zipCode, msg: error?.message });
+    return { provider: 'Unknown', baseRate: 0.14, nemRate: 0.05, nem3Rate: 0.04 };
   }
 };
 
