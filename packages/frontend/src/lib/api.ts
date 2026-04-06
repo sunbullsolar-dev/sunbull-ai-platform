@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Normalize so endpoints like /v1/leads resolve correctly regardless of
+// whether NEXT_PUBLIC_API_URL was set with or without a trailing /api.
+const _trimmed = RAW_API_URL.replace(/\/$/, '');
+const API_URL = _trimmed.endsWith('/api') ? _trimmed : _trimmed + '/api';
 
 const api = axios.create({
   baseURL: API_URL,
