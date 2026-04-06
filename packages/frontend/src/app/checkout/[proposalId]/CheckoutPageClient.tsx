@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Button from '@/components/ui/Button';
@@ -12,7 +12,7 @@ import WelcomeScreen from '@/components/checkout/WelcomeScreen';
 import { apiClient } from '@/lib/api';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 
-type Step = 'confirm' | 'summary' | 'financing' | 'docusign' | 'inspection' | 'welcome';
+type Step = 'contact' | 'confirm' | 'summary' | 'financing' | 'docusign' | 'inspection' | 'welcome';
 
 interface CheckoutPageClientProps {
   proposalId: string;
@@ -23,9 +23,60 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
   const searchParams = useSearchParams();
   const selectedOption = searchParams.get('option') || 'finance';
 
-  const [step, setStep] = useState<Step>('summary');
+  const [step, setStep] = useState<Step>('contact');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [contact, setContact] = useState({ firstName: '', lastName: '', email: '', phone: '', tcpaConsent: false });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await apiClient.getProposal(proposalId);
+        const p = resp.data?.data || resp.data;
+        const lid = p?.lead_id || p?.leadId;
+        const email = p?.email || '';
+        if (lid) setLeadId(lid);
+        // If contact already captured (real email, not ghost), skip contact step
+        if (email && !email.endsWith('@sunbull.pending')) {
+          setStep('summary');
+          setContact((c) => ({
+            ...c,
+            firstName: p?.first_name || '',
+            lastName: p?.last_name || '',
+            email,
+          }));
+        }
+      } catch {
+        // ignore; user can still fill the form
+      }
+    })();
+  }, [proposalId]);
+
+  const handleSubmitContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!leadId) {
+      setError('Missing lead reference. Please refresh the page.');
+      return;
+    }
+    if (!contact.firstName || !contact.email || !contact.phone) {
+      setError('Please fill in your name, email, and phone.');
+      return;
+    }
+    if (!contact.tcpaConsent) {
+      setError('Please agree to be contacted to continue.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiClient.updateLeadContact(leadId, contact);
+      setStep('summary');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Could not save contact info');
+    }
+    setLoading(false);
+  };
 
   const handleConfirmPaymentOption = async () => {
     setLoading(true);
@@ -146,6 +197,64 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
+          {step === 'contact' && (
+            <Card className="p-8">
+              <h2 className="font-bebas text-3xl text-sun tracking-wide mb-2 text-center">
+                Almost There
+              </h2>
+              <p className="text-gray-400 text-center mb-8">
+                Enter your contact info so we can finalize your design and schedule your install.
+              </p>
+              <form onSubmit={handleSubmitContact} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    placeholder="First name"
+                    value={contact.firstName}
+                    onChange={(e) => setContact({ ...contact, firstName: e.target.value })}
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Last name"
+                    value={contact.lastName}
+                    onChange={(e) => setContact({ ...contact, lastName: e.target.value })}
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun"
+                  />
+                </div>
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={contact.email}
+                  onChange={(e) => setContact({ ...contact, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun"
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone"
+                  value={contact.phone}
+                  onChange={(e) => setContact({ ...contact, phone: e.target.value })}
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sun"
+                />
+                <label className="flex items-start gap-3 text-xs text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={contact.tcpaConsent}
+                    onChange={(e) => setContact({ ...contact, tcpaConsent: e.target.checked })}
+                    className="mt-1"
+                  />
+                  <span>
+                    I agree that Sunbull Solar may contact me by phone, text, or email about my solar
+                    quote, including via automated means. Consent is not a condition of purchase.
+                  </span>
+                </label>
+                <Button fullWidth size="lg" type="submit" isLoading={loading}>
+                  Continue to Review
+                </Button>
+              </form>
+            </Card>
+          )}
+
           {step === 'summary' && (
             <CommitmentSummary
               homeownerName="John Doe"
