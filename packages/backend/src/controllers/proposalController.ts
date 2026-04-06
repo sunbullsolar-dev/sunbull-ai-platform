@@ -143,15 +143,21 @@ export const generateProposal = async (req: Request, res: Response) => {
           'Proposal generated successfully'
         )
       );
-    } catch (apiErr) {
+    } catch (apiErr: any) {
+      const msg = apiErr?.message || String(apiErr);
+      const stack = apiErr?.stack || '';
+      console.error('[proposal-generate] inner pipeline failed:', msg, stack);
       logger.error('API call failed during proposal generation', { apiErr });
       res.status(500).json(
-        errorResponse('Failed to generate proposal. Please try again.', 500)
+        errorResponse(`Proposal pipeline failed: ${msg}`, 500)
       );
     }
-  } catch (err) {
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    const stack = err?.stack || '';
+    console.error('[proposal-generate] outer handler failed:', msg, stack);
     logger.error('Proposal generation error', { error: err });
-    res.status(500).json(errorResponse('Internal server error', 500));
+    res.status(500).json(errorResponse(`Proposal error: ${msg}`, 500));
   }
 };
 
