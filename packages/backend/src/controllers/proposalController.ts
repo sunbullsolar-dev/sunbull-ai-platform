@@ -176,14 +176,16 @@ export const getProposal = async (req: Request, res: Response) => {
     }
 
     const proposalData = proposal.rows[0];
-    proposalData.roof_analysis = JSON.parse(proposalData.roof_analysis);
-    proposalData.payment_options = JSON.parse(proposalData.payment_options);
-    proposalData.roi = JSON.parse(proposalData.roi);
+    const safeParse = (v: any) => (typeof v === 'string' ? JSON.parse(v) : v);
+    proposalData.roof_analysis = safeParse(proposalData.roof_analysis);
+    proposalData.payment_options = safeParse(proposalData.payment_options);
+    proposalData.roi = safeParse(proposalData.roi);
 
     res.json(success(proposalData));
-  } catch (err) {
+  } catch (err: any) {
+    console.error('[get-proposal]', err?.message, err?.stack);
     logger.error('Get proposal error', { error: err });
-    res.status(500).json(errorResponse('Internal server error', 500));
+    res.status(500).json(errorResponse(`Get proposal error: ${err?.message || err}`, 500));
   }
 };
 
@@ -202,14 +204,16 @@ export const getProposalByLead = async (req: Request, res: Response) => {
     }
 
     const proposalData = proposal.rows[0];
-    proposalData.roof_analysis = JSON.parse(proposalData.roof_analysis);
-    proposalData.payment_options = JSON.parse(proposalData.payment_options);
-    proposalData.roi = JSON.parse(proposalData.roi);
+    const safeParse = (v: any) => (typeof v === 'string' ? JSON.parse(v) : v);
+    proposalData.roof_analysis = safeParse(proposalData.roof_analysis);
+    proposalData.payment_options = safeParse(proposalData.payment_options);
+    proposalData.roi = safeParse(proposalData.roi);
 
     res.json(success(proposalData));
-  } catch (err) {
+  } catch (err: any) {
+    console.error('[get-proposal-by-lead]', err?.message, err?.stack);
     logger.error('Get proposal by lead error', { error: err });
-    res.status(500).json(errorResponse('Internal server error', 500));
+    res.status(500).json(errorResponse(`Get proposal by lead error: ${err?.message || err}`, 500));
   }
 };
 
