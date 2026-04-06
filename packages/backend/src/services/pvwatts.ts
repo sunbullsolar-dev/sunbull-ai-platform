@@ -59,14 +59,17 @@ export const calculateProduction = async (
     
     return result;
   } catch (error: any) {
-    logger.warn('PVWatts fallback', { systemSize, msg: error?.message });
-    // ~1,500 kWh per kW-year is a reasonable US-average heuristic
-    const annual = Math.round(systemSize * 1500);
-    return {
-      annualProduction: annual,
-      monthlyProduction: Array.from({ length: 12 }, () => Math.round(annual / 12)),
-      systemInputs: { dcSystemSize: 1.1, acSystemSize: systemSize },
-    };
+    logger.error('PVWatts request failed', {
+      systemSize, latitude, longitude,
+      status: error?.response?.status,
+      msg: error?.message,
+      data: error?.response?.data,
+    });
+    throw new Error(
+      `PVWatts production calculation failed: ${
+        error?.response?.data?.errors?.[0] || error?.message
+      }`
+    );
   }
 };
 

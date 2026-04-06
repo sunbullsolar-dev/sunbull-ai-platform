@@ -8,14 +8,25 @@ import { updateContact, createContact } from '../services/hubspot';
 
 export const createLead = async (req: Request, res: Response) => {
   try {
-    const {
+    let {
       firstName,
       lastName,
       email,
       phone,
       address,
       tcpaConsent,
-    } = req.body;
+      fullName,
+      utilityProvider,
+      monthlyBill,
+      billUnit,
+    } = req.body as any;
+
+    if ((!firstName || !lastName) && fullName) {
+      const parts = String(fullName).trim().split(/\s+/);
+      firstName = firstName || parts[0] || 'Homeowner';
+      lastName = lastName || parts.slice(1).join(' ') || '-';
+    }
+    if (!lastName) lastName = '-';
 
     const leadId = uuidv4();
     const tenantId = req.tenantId!;
@@ -32,10 +43,15 @@ export const createLead = async (req: Request, res: Response) => {
       );
     }
 
+    const billAmount = typeof monthlyBill === 'number' ? monthlyBill : null;
+    const unit = billUnit === 'kwh' ? 'kwh' : billAmount ? 'dollar' : null;
+
     await query(
-      `INSERT INTO leads 
-        (id, tenant_id, first_name, last_name, email, phone, address, status, tcpa_consent, tcpa_consent_date, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      `INSERT INTO leads
+        (id, tenant_id, first_name, last_name, email, phone, address, status,
+         tcpa_consent, tcpa_consent_date, utility, monthly_bill, bill_unit,
+         created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         leadId,
         tenantId,
@@ -47,6 +63,9 @@ export const createLead = async (req: Request, res: Response) => {
         'new',
         tcpaConsent,
         new Date(),
+        utilityProvider || null,
+        billAmount,
+        unit,
         new Date(),
         new Date(),
       ]

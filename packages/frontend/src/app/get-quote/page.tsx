@@ -38,6 +38,7 @@ const states = [
 
 const utilityProvidersByState: Record<string, { value: string; label: string }[]> = {
   CA: [
+    { value: 'LADWP', label: 'LADWP (Los Angeles Dept of Water & Power)' },
     { value: 'SCE', label: 'Southern California Edison' },
     { value: 'PG&E', label: 'Pacific Gas & Electric' },
     { value: 'SDGE', label: 'San Diego Gas & Electric' },

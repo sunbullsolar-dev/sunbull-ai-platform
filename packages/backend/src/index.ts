@@ -10,6 +10,7 @@ import { errorHandler, asyncHandler, notFoundHandler } from './middleware/errorH
 import { tenantMiddleware } from './middleware/tenant';
 import { optionalAuth } from './middleware/auth';
 import routes from './routes';
+import { query as _bootstrapQuery } from './config/database';
 
 const app: Application = express();
 
@@ -57,6 +58,16 @@ app.use(`/api/${config.server.apiVersion}`, routes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+(async () => {
+  try {
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS monthly_bill FLOAT`);
+    await _bootstrapQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS bill_unit VARCHAR(10)`);
+    logger.info('Schema bootstrap complete');
+  } catch (e: any) {
+    logger.warn('Schema bootstrap failed (continuing)', { msg: e?.message });
+  }
+})();
 
 const PORT = config.server.port;
 const server = app.listen(PORT, () => {

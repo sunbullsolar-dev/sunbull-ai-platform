@@ -32,37 +32,45 @@ export const generateProposal = async (req: Request, res: Response) => {
       const roofAnalysis = await analyzeRoof(lead.address);
       logger.debug('Roof analysis complete', { roofAnalysis });
 
-      let annualUsage = lead.estimated_annual_usage || 10000;
-      let utilityRate = 0.14;
-      let nemRate = 0.05;
+      // Resolve ZIP from geocoded address fallback to trailing token
+      const zipMatch = (lead.address || '').match(/\b(\d{5})(?:-\d{4})?\b/);
+      const zipCode = zipMatch ? zipMatch[1] : '';
 
-      if (billImageBase64) {
-        try {
-          const billData = await extractBillData(billImageBase64);
-          annualUsage = billData.monthlyUsage * 12;
-          utilityRate = billData.monthlyBill / billData.monthlyUsage;
-          logger.debug('Bill data extracted', { billData });
-        } catch (billErr) {
-          logger.warn('Bill OCR failed, using estimates', { billErr });
-        }
+      // Real utility tariff lookup
+      const utilityData = await lookupUtilityRates(lead.utility || null, zipCode);
+      const utilityRate = utilityData.baseRate;
+      const nemRate = utilityData.nem3Rate ?? utilityData.nemRate ?? 0.05;
+      logger.info('Utility tariff resolved', { utilityData });
+
+      // Convert raw monthly bill → kWh using real tariff
+      let annualUsage: number;
+      if (lead.bill_unit === 'kwh' && lead.monthly_bill) {
+        annualUsage = Number(lead.monthly_bill) * 12;
+      } else if (lead.bill_unit === 'dollar' && lead.monthly_bill) {
+        annualUsage = (Number(lead.monthly_bill) / utilityRate) * 12;
+      } else if (lead.estimated_annual_usage) {
+        annualUsage = Number(lead.estimated_annual_usage);
+      } else {
+        throw new Error('Cannot determine annual usage: no bill or estimate on lead');
       }
+      annualUsage = Math.round(annualUsage);
+      logger.info('Annual usage resolved', { annualUsage, billUnit: lead.bill_unit });
 
-      const systemSize = await calculateSystemSize({
-        roofArea: roofAnalysis.usableSurface,
-        annualUsage,
-        location: lead.address,
-      });
+      // System size: usage ÷ specific yield, bounded by usable roof
+      // (70 sq ft / kW ≈ 6.5 m² / kW)
+      const byUsage = annualUsage / 1500;
+      const byRoof = (roofAnalysis.usableSurface || 100) / 6.5;
+      const systemSize = Math.round(
+        Math.max(3, Math.min(15, Math.min(byUsage, byRoof))) * 10
+      ) / 10;
 
-      const addressParts = lead.address.split(',');
-      const zipCode = addressParts[addressParts.length - 1].trim().split(' ')[0];
-
-      const utilityData = await lookupUtilityRates(lead.address, zipCode);
-      nemRate = utilityData.nemRate || 0.05;
-
+      // Real PVWatts call at geocoded lat/lng
       const pvData = await calculateProduction(
-        37.7749,
-        -122.4194,
-        systemSize
+        roofAnalysis.latitude,
+        roofAnalysis.longitude,
+        systemSize,
+        roofAnalysis.azimuth,
+        Math.max(5, Math.min(45, roofAnalysis.pitch || 20))
       );
 
       const systemCost = systemSize * 2500;
