@@ -26,13 +26,22 @@ const client = axios.create({
 export const calculateSystemSize = async (
   data: SystemSizingRequest
 ): Promise<number> => {
-  // Local heuristic fallback: 1 kW per ~1,500 kWh/year, capped by roof area
-  // (~70 sq ft per kW). Avoids hard dependency on ml-service route mismatch.
+  // Target >=110% offset when roof space allows. 1 kW ~= 1,500 kWh/yr (100% offset);
+  // multiply by 1.10 for the minimum target. Roof area (~70 sq ft/kW) is the only
+  // upper bound — we only undersize below 110% if the roof physically can't fit it.
   try {
-    const byUsage = (data.annualUsage || 10000) / 1500;
-    const byRoof = (data.roofArea || 1500) / 70;
-    const systemSize = Math.max(3, Math.min(15, Math.min(byUsage, byRoof)));
-    logger.debug('System sizing (local heuristic)', { systemSize });
+    const OFFSET_TARGET = 1.10;
+    const kwhPerKw = 1500;
+    const sqftPerKw = 70;
+    const annualUsage = data.annualUsage || 10000;
+    const targetByUsage = (annualUsage / kwhPerKw) * OFFSET_TARGET;
+    const roofMax = (data.roofArea || 1500) / sqftPerKw;
+    // Use min(target, roofMax) so we always chase 110% unless roof-limited
+    const systemSize = Math.max(3, Math.min(targetByUsage, roofMax));
+    const offsetPct = Math.round((systemSize * kwhPerKw / annualUsage) * 100);
+    logger.debug('System sizing (110% target heuristic)', {
+      targetByUsage, roofMax, systemSize, offsetPct, roofLimited: roofMax < targetByUsage,
+    });
     return Math.round(systemSize * 10) / 10;
   } catch (error) {
     logger.error('System sizing heuristic error', { error });

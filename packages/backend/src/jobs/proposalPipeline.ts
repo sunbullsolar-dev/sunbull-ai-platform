@@ -24,16 +24,26 @@ export const executeProposalPipeline = async (leadId: string, tenantId: string):
     const lead = leadResult.rows[0];
 
     const roofAnalysis = await analyzeRoof(lead.address);
-    const systemSize = await calculateSystemSize({
-      roofArea: roofAnalysis.usableSurface,
-      annualUsage: lead.estimated_annual_usage || 10000,
-      location: lead.address,
-    });
 
     const addressParts = lead.address.split(',');
     const zipCode = addressParts[addressParts.length - 1].trim().split(' ')[0];
 
     const utilityData = await lookupUtilityRates(lead.address, zipCode);
+
+    // Derive annual usage from monthly bill if not explicitly provided, so
+    // sizing actually reflects the homeowner's real consumption.
+    let annualUsage = lead.estimated_annual_usage;
+    if (!annualUsage && lead.monthly_bill) {
+      const rate = utilityData.baseRate || 0.30;
+      annualUsage = Math.round((Number(lead.monthly_bill) * 12) / rate);
+    }
+    if (!annualUsage) annualUsage = 10000;
+
+    const systemSize = await calculateSystemSize({
+      roofArea: roofAnalysis.usableSurface,
+      annualUsage,
+      location: lead.address,
+    });
     const pvData = await calculateProduction(37.7749, -122.4194, systemSize);
     const systemCost = systemSize * 2500;
 
