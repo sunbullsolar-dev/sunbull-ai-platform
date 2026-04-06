@@ -1,7 +1,7 @@
 import axios from 'axios';
 import logger from '../utils/logger';
 import { cacheGet, cacheSet } from '../config/redis';
-import { config } from '../config';
+import config from '../config';
 
 // Infer a utility provider from a ZIP code prefix for common US markets.
 // Used as a fallback when OpenEI is unavailable or returns no data.
