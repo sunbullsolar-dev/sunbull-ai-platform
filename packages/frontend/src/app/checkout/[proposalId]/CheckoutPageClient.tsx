@@ -27,6 +27,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leadId, setLeadId] = useState<string | null>(null);
+  const [proposalData, setProposalData] = useState<any>(null);
   const [contact, setContact] = useState({ firstName: '', lastName: '', email: '', phone: '', tcpaConsent: false });
 
   useEffect(() => {
@@ -34,6 +35,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
       try {
         const resp = await apiClient.getProposal(proposalId);
         const p = resp.data?.data || resp.data;
+        setProposalData(p);
         const lid = p?.lead_id || p?.leadId;
         const email = p?.email || '';
         if (lid) setLeadId(lid);
@@ -255,20 +257,29 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
             </Card>
           )}
 
-          {step === 'summary' && (
-            <CommitmentSummary
-              homeownerName="John Doe"
-              systemKW={8}
-              panelCount={24}
-              monthlyPayment={paymentOptions[selectedOption]?.monthly || 145}
-              paymentOption={paymentOptions[selectedOption]?.name || 'Financing'}
-              utilityTotal={150000}
-              solarTotal={45000}
-              onGoBack={() => router.back()}
-              onReady={handleReadyToSign}
-              isLoading={loading}
-            />
-          )}
+          {step === 'summary' && (() => {
+            const systemKW = Number(proposalData?.system_size ?? proposalData?.systemSize ?? 0);
+            const panelCount = Math.max(1, Math.round(systemKW / 0.4));
+            const monthlyAvg = Number(proposalData?.roi?.monthlyAverage ?? 0);
+            const year25 = Number(proposalData?.roi?.year25Total ?? 0);
+            const utilityTotal = Math.round(monthlyAvg * 12 * 25 + year25);
+            const solarTotal = Math.max(0, utilityTotal - year25);
+            const hoName = `${contact.firstName || proposalData?.first_name || ''} ${contact.lastName || proposalData?.last_name || ''}`.trim() || 'Homeowner';
+            return (
+              <CommitmentSummary
+                homeownerName={hoName}
+                systemKW={Math.round(systemKW * 10) / 10}
+                panelCount={panelCount}
+                monthlyPayment={paymentOptions[selectedOption]?.monthly || 145}
+                paymentOption={paymentOptions[selectedOption]?.name || 'Financing'}
+                utilityTotal={utilityTotal}
+                solarTotal={solarTotal}
+                onGoBack={() => router.back()}
+                onReady={handleReadyToSign}
+                isLoading={loading}
+              />
+            );
+          })()}
 
           {step === 'docusign' && (
             <Card className="p-8">
@@ -303,7 +314,7 @@ const CheckoutPageClient: React.FC<CheckoutPageClientProps> = ({ proposalId }) =
 
           {step === 'welcome' && (
             <WelcomeScreen
-              homeownerName="John"
+              homeownerName={contact.firstName || proposalData?.first_name || 'there'}
               onViewDashboard={() => router.push(`/dashboard/${proposalId}`)}
             />
           )}

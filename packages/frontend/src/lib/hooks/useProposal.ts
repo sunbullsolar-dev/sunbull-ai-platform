@@ -89,7 +89,8 @@ export function useProposal(proposalId: string | null) {
     const fetchProposal = async () => {
       try {
         setLoading(true);
-        const { data } = await apiClient.getProposal(proposalId);
+        const { data: envelope } = await apiClient.getProposal(proposalId);
+        const data = envelope?.data ?? envelope;
         setProposal(mapProposal(data));
         setError(null);
 
@@ -98,8 +99,8 @@ export function useProposal(proposalId: string | null) {
             const status = await checkStatus();
             if (status && status.status !== 'generating') {
               clearInterval(intervalId);
-              const { data: updated } = await apiClient.getProposal(proposalId);
-              setProposal(mapProposal(updated));
+              const { data: updatedEnv } = await apiClient.getProposal(proposalId);
+              setProposal(mapProposal(updatedEnv?.data ?? updatedEnv));
             }
           }, 1000);
         }
