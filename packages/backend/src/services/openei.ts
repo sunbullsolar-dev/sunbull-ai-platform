@@ -1,6 +1,33 @@
 import axios from 'axios';
 import logger from '../utils/logger';
 import { cacheGet, cacheSet } from '../config/redis';
+import { config } from '../config';
+
+// Infer a utility provider from a ZIP code prefix for common US markets.
+// Used as a fallback when OpenEI is unavailable or returns no data.
+const inferUtilityFromZip = (zipCode: string): string | null => {
+  const z = parseInt(zipCode.slice(0, 5), 10);
+  if (isNaN(z)) return null;
+  // Los Angeles (LADWP service territory, approx)
+  if (z >= 90001 && z <= 90084) return 'LADWP';
+  if (z >= 90086 && z <= 90089) return 'LADWP';
+  if (z >= 90091 && z <= 90103) return 'LADWP';
+  if (z >= 91040 && z <= 91043) return 'LADWP';
+  if (z >= 91303 && z <= 91499) return 'LADWP';
+  // SCE (Southern California Edison) — broad Southern California
+  if (z >= 90200 && z <= 93599) return 'SCE';
+  // SDG&E — San Diego area
+  if (z >= 91900 && z <= 92199) return 'SDGE';
+  // PG&E — Northern California
+  if (z >= 93600 && z <= 96199) return 'PG&E';
+  // NY Con Ed
+  if (z >= 10001 && z <= 10499) return 'Con Ed';
+  // Florida (FPL approx)
+  if (z >= 33000 && z <= 34999) return 'FPL';
+  // Texas deregulated (TXU default)
+  if (z >= 75000 && z <= 79999) return 'TXU';
+  return null;
+};
 
 export interface UtilityRate {
   provider: string;
@@ -45,6 +72,21 @@ export const lookupUtilityRates = async (
     return rate;
   }
 
+  const fallbackToTable = (reason: string): UtilityRate | null => {
+    const inferred = inferUtilityFromZip(zipCode);
+    if (inferred && RATE_TABLE[inferred]) {
+      logger.warn('OpenEI unavailable, using ZIP→utility table fallback', {
+        zipCode,
+        inferred,
+        reason,
+      });
+      const rate: UtilityRate = { ...RATE_TABLE[inferred], source: 'table' };
+      cacheSet(cacheKey, JSON.stringify(rate), 86400 * 30).catch(() => {});
+      return rate;
+    }
+    return null;
+  };
+
   try {
     const resp = await openeiClient.get('/utility_rates', {
       params: {
@@ -55,6 +97,7 @@ export const lookupUtilityRates = async (
         limit: 5,
         sector: 'Residential',
         approved: 'true',
+        api_key: config.external.nrelApiKey || 'DEMO_KEY',
       },
     });
     const items: any[] = resp.data?.items || [];
@@ -84,6 +127,8 @@ export const lookupUtilityRates = async (
       zipCode,
       msg: error?.message,
     });
+    const fallback = fallbackToTable(error?.message || 'unknown');
+    if (fallback) return fallback;
     throw new Error(
       `Utility tariff lookup failed for ${utilityCode || zipCode}: ${error?.message}`
     );
