@@ -97,7 +97,7 @@ export const lookupUtilityRates = async (
         limit: 5,
         sector: 'Residential',
         approved: 'true',
-        api_key: config.external.nrelApiKey || 'DEMO_KEY',
+        api_key: (config.external.nrelApiKey && !/^placehold/i.test(config.external.nrelApiKey)) ? config.external.nrelApiKey : 'DEMO_KEY',
       },
     });
     const items: any[] = resp.data?.items || [];

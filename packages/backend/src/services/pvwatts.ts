@@ -34,7 +34,7 @@ export const calculateProduction = async (
 
     const response = await client.get('', {
       params: {
-        api_key: config.external.nrelApiKey,
+        api_key: (config.external.nrelApiKey && !/^placehold/i.test(config.external.nrelApiKey)) ? config.external.nrelApiKey : 'DEMO_KEY',
         lat: latitude,
         lon: longitude,
         system_capacity: systemSize,
