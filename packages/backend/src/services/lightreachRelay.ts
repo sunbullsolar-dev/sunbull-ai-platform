@@ -13,10 +13,14 @@
 import { randomUUID } from 'crypto';
 import logger from '../utils/logger';
 
+export type RelayTarget = 'palmetto' | 'goodleap';
+
 export interface RelayRequest {
+  target?: RelayTarget; // which browser tab / origin should execute this; default 'palmetto'
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  path: string; // relative to https://palmetto.finance, e.g. /api/v2/accounts
+  path: string; // relative URL (or absolute) to execute against the target origin
   body?: any;
+  headers?: Record<string, string>; // optional extra request headers
 }
 
 export interface RelayResponse {
@@ -53,14 +57,17 @@ export function enqueue(request: RelayRequest, timeoutMs = DEFAULT_TIMEOUT_MS): 
   });
 }
 
-export function dequeue(): { id: string; request: RelayRequest } | null {
-  while (queue.length) {
-    const id = queue.shift()!;
+export function dequeue(target: RelayTarget = 'palmetto'): { id: string; request: RelayRequest } | null {
+  // Find the first job whose target matches (default 'palmetto' for legacy jobs)
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i];
     const job = pending.get(id);
-    if (job) {
-      logger.info('[lightreach-relay] dequeued', { id });
-      return { id, request: job.request };
-    }
+    if (!job) { queue.splice(i, 1); i--; continue; }
+    const jobTarget = job.request.target || 'palmetto';
+    if (jobTarget !== target) continue;
+    queue.splice(i, 1);
+    logger.info('[relay] dequeued', { id, target });
+    return { id, request: job.request };
   }
   return null;
 }

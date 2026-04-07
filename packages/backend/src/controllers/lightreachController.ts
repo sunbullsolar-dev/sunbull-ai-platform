@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { dequeue, deliverResult, stats } from '../services/lightreachRelay';
+import { dequeue, deliverResult, stats, RelayTarget } from '../services/lightreachRelay';
 import logger from '../utils/logger';
 
 /**
@@ -25,14 +25,12 @@ const requireToken = (req: Request, res: Response): boolean => {
 // Browser relay polls this endpoint. If a job is waiting, returns it.
 export const relayDequeue = async (req: Request, res: Response) => {
   if (!requireToken(req, res)) return;
-  const job = dequeue();
-  if (!job) {
-    res.setHeader('Access-Control-Allow-Origin', 'https://palmetto.finance');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    return res.status(204).end();
-  }
-  res.setHeader('Access-Control-Allow-Origin', 'https://palmetto.finance');
+  const target = ((req.query.target as string) || 'palmetto') as RelayTarget;
+  const origin = target === 'goodleap' ? 'https://origin.goodleap.com' : 'https://palmetto.finance';
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const job = dequeue(target);
+  if (!job) return res.status(204).end();
   res.json({ id: job.id, ...job.request });
 };
 
@@ -44,7 +42,12 @@ export const relayResult = async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'id and status required' });
   }
   const ok = deliverResult(id, { status, body });
-  res.setHeader('Access-Control-Allow-Origin', 'https://palmetto.finance');
+  const origin = (req.headers.origin as string) || 'https://palmetto.finance';
+  if (origin === 'https://origin.goodleap.com' || origin === 'https://palmetto.finance') {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'https://palmetto.finance');
+  }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.json({ success: ok });
 };

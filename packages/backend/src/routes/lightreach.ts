@@ -6,7 +6,10 @@ const router = Router();
 // Per-router CORS middleware — browser relay runs on palmetto.finance cross-origin.
 // This overrides the global cors() middleware's origin allowlist.
 router.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://palmetto.finance');
+  const origin = req.headers.origin as string | undefined;
+  const allowed = origin === 'https://origin.goodleap.com' ? origin : 'https://palmetto.finance';
+  res.setHeader('Access-Control-Allow-Origin', allowed);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type,x-relay-token');

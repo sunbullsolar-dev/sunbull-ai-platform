@@ -164,7 +164,12 @@ const config: Config = {
     level: process.env.LOG_LEVEL || 'info',
   },
   cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001').split(','),
+    origin: [
+      ...(process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001').split(','),
+      // Always allow these origins so the browser-tab relay loops can reach the backend
+      'https://palmetto.finance',
+      'https://origin.goodleap.com',
+    ],
   },
 };
 

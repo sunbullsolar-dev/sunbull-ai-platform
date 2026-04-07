@@ -11,6 +11,7 @@ import { prequialifyMultipleLenders } from '../services/lenders';
 import { calculateSystemSize, calculateROI, generateProposalCopy } from '../services/mlService';
 import { sendProposalEmail } from '../services/sendgrid';
 import { quotePPA } from '../services/lightreach';
+import { quoteLoan as goodleapQuoteLoan } from '../services/goodleap';
 
 export const generateProposal = async (req: Request, res: Response) => {
   try {
@@ -154,6 +155,31 @@ export const generateProposal = async (req: Request, res: Response) => {
           logger.warn('LightReach quote failed, continuing without PPA option', {
             msg: lrErr?.message,
           });
+        }
+      }
+
+      // Real GoodLeap loan quote via origin.goodleap.com browser-tab relay (optional — fails soft).
+      if (process.env.GOODLEAP_RELAY_ENABLED === '1') {
+        try {
+          const state = (lead.address || '').match(/\b([A-Z]{2})\b/)?.[1] || 'CA';
+          const glQuote = await goodleapQuoteLoan({
+            state,
+            loanAmount: systemCost,
+            termYears: 20,
+          });
+          logger.info('GoodLeap loan quote success', glQuote);
+          paymentOptions.push({
+            type: 'loan',
+            provider: 'GoodLeap',
+            lender: 'GoodLeap',
+            monthlyPayment: glQuote.monthlyPayment,
+            apr: glQuote.apr,
+            term: glQuote.term,
+            loanAmount: glQuote.loanAmount,
+            offerId: glQuote.offerId,
+          });
+        } catch (glErr: any) {
+          logger.warn('GoodLeap quote failed, continuing without loan option', { msg: glErr?.message });
         }
       }
 
