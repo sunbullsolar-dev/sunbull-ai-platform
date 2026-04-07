@@ -10,6 +10,7 @@ import { extractBillData } from '../services/billOcr';
 import { prequialifyMultipleLenders } from '../services/lenders';
 import { calculateSystemSize, calculateROI, generateProposalCopy } from '../services/mlService';
 import { sendProposalEmail } from '../services/sendgrid';
+import { quotePPA } from '../services/lightreach';
 
 export const generateProposal = async (req: Request, res: Response) => {
   try {
@@ -100,12 +101,61 @@ export const generateProposal = async (req: Request, res: Response) => {
 
       const systemCost = systemSize * 2500;
 
-      const paymentOptions = await prequialifyMultipleLenders(
+      const paymentOptions: any[] = await prequialifyMultipleLenders(
         systemCost,
         750,
         400000,
         100000
       );
+
+      // Real LightReach PPA quote via browser-tab relay (optional — fails soft).
+      if (process.env.LIGHTREACH_RELAY_TOKEN && process.env.LIGHTREACH_SALES_REP_LICENSE) {
+        try {
+          const lrQuote = await quotePPA({
+            address: lead.address,
+            address1: (lead.address || '').split(',')[0].trim(),
+            city: (lead.address || '').split(',')[1]?.trim() || '',
+            state: (lead.address || '').match(/\b([A-Z]{2})\b/)?.[1] || 'CA',
+            zip: zipCode,
+            lat: roofAnalysis.latitude,
+            lon: roofAnalysis.longitude,
+            systemSizeKw: systemSize,
+            annualProductionKwh: pvData.annualProduction,
+            firstName: lead.first_name || 'Homeowner',
+            lastName: lead.last_name || 'Pending',
+            email: lead.email && !lead.email.includes('pending-') ? lead.email : 'pending@sunbull.ai',
+            phoneNumber: lead.phone || '5555555555',
+            utilityLseId: String((utilityData as any).lseId || '734'),
+            utilityTariffId: Number((utilityData as any).tariffId || 1),
+            utilityRate,
+            salesRepName: process.env.LIGHTREACH_SALES_REP_NAME || 'Sunbull Rep',
+            salesRepEmail: process.env.LIGHTREACH_SALES_REP_EMAIL || 'rep@sunbull.ai',
+            salesRepLicenseNumber: process.env.LIGHTREACH_SALES_REP_LICENSE!,
+            salesRepPhoneNumber: process.env.LIGHTREACH_SALES_REP_PHONE || '',
+          });
+          logger.info('LightReach PPA quote success', {
+            accountId: lrQuote.accountId,
+            rate: lrQuote.ratePerKwh,
+            monthly: lrQuote.monthlyPayment,
+          });
+          paymentOptions.push({
+            type: 'ppa',
+            provider: 'LightReach',
+            ratePerKwh: lrQuote.ratePerKwh,
+            escalator: lrQuote.escalator,
+            term: lrQuote.term,
+            monthlyPayment: lrQuote.monthlyPayment,
+            year1Savings: lrQuote.year1Savings,
+            lifetimeSavings: lrQuote.lifetimeSavings,
+            accountId: lrQuote.accountId,
+            quoteId: lrQuote.quoteId,
+          });
+        } catch (lrErr: any) {
+          logger.warn('LightReach quote failed, continuing without PPA option', {
+            msg: lrErr?.message,
+          });
+        }
+      }
 
       const roi = await calculateROI(
         systemSize,

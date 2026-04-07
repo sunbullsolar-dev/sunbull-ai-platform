@@ -7,6 +7,7 @@ import installersRouter from './installers';
 import authRouter from './auth';
 import tenantsRouter from './tenants';
 import webhooksRouter from './webhooks';
+import lightreachRouter from './lightreach';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/installers', installersRouter);
 router.use('/auth', authRouter);
 router.use('/tenants', tenantsRouter);
 router.use('/webhooks', webhooksRouter);
+router.use('/lightreach', lightreachRouter);
 
 export default router;
