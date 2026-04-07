@@ -103,7 +103,7 @@ export async function attachSystemDesign(accountId: string, systemSizeKw: number
   const body = {
     systemSizeKw,
     annualProductionKwh,
-    // extra fields may be required — the quote endpoint will tell us on first real call
+    systemFirstYearProductionKwh: annualProductionKwh,
   };
   const res = await relay('POST', `/api/accounts/${accountId}/system-design`, body);
   if (res.status >= 400) {
