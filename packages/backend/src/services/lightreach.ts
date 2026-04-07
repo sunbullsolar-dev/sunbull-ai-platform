@@ -81,6 +81,12 @@ export async function createAccount(input: LightReachQuoteInput): Promise<string
       lastName: input.lastName,
       phoneNumber: input.phoneNumber,
       email: input.email,
+      address: {
+        address1: input.address1,
+        city: input.city,
+        state: input.state,
+        zip: input.zip,
+      },
     }],
   };
 
