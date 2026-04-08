@@ -8,7 +8,7 @@ const API_URL = _trimmed.endsWith('/api') ? _trimmed : _trimmed + '/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000,
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
