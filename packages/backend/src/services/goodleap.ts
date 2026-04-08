@@ -20,10 +20,8 @@
  * (the relay loop in the tab captures them from the app's own fetch calls and
  * attaches them to each backend-initiated request).
  */
-import { getTokens } from './goodleapTokens';
+import { enqueue, RelayResponse } from './lightreachRelay';
 import logger from '../utils/logger';
-
-interface RelayResponse { status: number; body: any; }
 
 // Solar category id — stable across all partner orgs (reverse-engineered from GET_PRODUCTS).
 const SOLAR_CATEGORY_ID = '3b4acb46-e937-4bee-b134-a54c36568536';
@@ -102,33 +100,12 @@ export interface GoodLeapQuoteResult {
 }
 
 async function gql(query: string, variables: any, operationName: string): Promise<RelayResponse> {
-  const tok = getTokens();
-  if (!tok) {
-    throw new Error('GoodLeap tokens not captured yet — load origin.goodleap.com tab with capture snippet and trigger a real call first');
-  }
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    'authorization': tok.authorization,
-    'accept': '*/*',
-    'origin': 'https://origin.goodleap.com',
-    'referer': 'https://origin.goodleap.com/',
-    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  };
-  if (tok.xClientMetadata) headers['x-client-metadata'] = tok.xClientMetadata;
-
-  const resp = await fetch(GRAPHQL_URL, {
+  return enqueue({
+    target: 'goodleap',
     method: 'POST',
-    headers,
-    body: JSON.stringify({ operationName, variables, query }),
+    path: GRAPHQL_URL,
+    body: { operationName, variables, query },
   });
-  const text = await resp.text();
-  let body: any;
-  try { body = JSON.parse(text); } catch { body = text; }
-  return { status: resp.status, body };
-}
-
-export function getOrgIdFromTokens(): string | undefined {
-  return getTokens()?.organizationId;
 }
 
 function parseMoney(s: string | undefined): number {
@@ -137,8 +114,7 @@ function parseMoney(s: string | undefined): number {
 }
 
 export async function getOffers(groupCode: string) {
-  const orgId = getOrgIdFromTokens();
-  const res = await gql(GET_PRODUCTS_QUERY, { groupCode, categoryId: SOLAR_CATEGORY_ID, orgId }, 'GET_PRODUCTS');
+  const res = await gql(GET_PRODUCTS_QUERY, { groupCode, categoryId: SOLAR_CATEGORY_ID }, 'GET_PRODUCTS');
   if (res.status >= 400) {
     throw new Error(`GoodLeap GET_PRODUCTS failed ${res.status}: ${JSON.stringify(res.body).slice(0, 300)}`);
   }
@@ -158,13 +134,11 @@ export async function getOffers(groupCode: string) {
 }
 
 export async function calculatePayment(amount: number, offerId: string): Promise<{ monthlyPayment: number; loanAmount: number }> {
-  const organizationId = getOrgIdFromTokens();
   const res = await gql(CALCULATE_QUERY, {
     amount,
     offerId,
     additionalPaydownAmount: null,
     enrollments: ['AUTOPAY'],
-    organizationId,
   }, 'CALCULATE');
   if (res.status >= 400) {
     throw new Error(`GoodLeap CALCULATE failed ${res.status}: ${JSON.stringify(res.body).slice(0, 300)}`);
