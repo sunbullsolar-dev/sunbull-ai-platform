@@ -1,14 +1,12 @@
 /**
  * LightReach / Palmetto Finance integration via browser-tab relay.
  *
- * Discovered endpoints (all on https://palmetto.finance, same-origin cookie auth):
- *   POST /api/v2/accounts                 — create homeowner account
- *   GET  /api/accounts/{id}               — read account
- *   POST /api/accounts/{id}/system-design — attach system design
- *   POST /api/accounts/{id}/quotes        — generate PPA/Lease quote
- *   GET  /api/utilities?advancedFilters=…  — utility + tariff catalog
+ * Quotes are fetched in a SINGLE call to /api/v3/estimated-pricing — no
+ * account/system-design persistence required. The endpoint returns an array
+ * of candidate PPA products (varying kwhRate + escalationRate) which we
+ * filter to the best option for the proposal.
  *
- * The create-account schema was reverse-engineered from live 400 responses.
+ * Request schema discovered by iteratively filling 400-response requirements.
  */
 import { enqueue, RelayResponse } from './lightreachRelay';
 import logger from '../utils/logger';
@@ -54,6 +52,70 @@ async function relay(method: 'GET' | 'POST', path: string, body?: any): Promise<
   return enqueue({ method, path, body });
 }
 
+export interface LightReachPricingProduct {
+  productId: string;
+  type: string;
+  name: string;
+  escalationRate: number;
+  kwhRate: number;
+  ppwRate: number;
+  monthlyPayments?: Array<{ year: number; monthlyPayment: number; totalMonthlyPayment: number; batteryPayment: number }>;
+  term?: number;
+  epcPpw?: number;
+}
+
+/**
+ * Fetch live LightReach PPA pricing. Single POST, no account persistence.
+ * Returns all candidate products (typically ~100 combos of kwhRate × escalator).
+ */
+export async function estimatedPricing(input: LightReachQuoteInput): Promise<LightReachPricingProduct[]> {
+  const body = {
+    lseId: input.utilityLseId,
+    tariffId: input.utilityTariffId,
+    utilityRate: input.utilityRate,
+    systemSizeKw: input.systemSizeKw,
+    annualProductionKwh: input.annualProductionKwh,
+    systemFirstYearProductionKwh: input.annualProductionKwh,
+    state: input.state,
+    zip: input.zip,
+    programType: 'solar',
+    contractType: 'ppa',
+    organizationId: process.env.LIGHTREACH_ORG_ID || 'pacific-sky-solar-llc',
+    salesRepLicenseNumber: input.salesRepLicenseNumber,
+    coordinates: { lat: input.lat, lon: input.lon },
+    address: {
+      address1: input.address1,
+      city: input.city,
+      state: input.state,
+      zip: input.zip,
+    },
+    address1: input.address1,
+    city: input.city,
+  };
+  const res = await relay('POST', '/api/v3/estimated-pricing', body);
+  if (res.status >= 400) {
+    throw new Error(`LightReach estimatedPricing failed ${res.status}: ${JSON.stringify(res.body).slice(0, 400)}`);
+  }
+  if (!Array.isArray(res.body)) {
+    throw new Error(`LightReach estimatedPricing: unexpected body shape: ${JSON.stringify(res.body).slice(0, 300)}`);
+  }
+  return res.body as LightReachPricingProduct[];
+}
+
+/**
+ * Pick the best PPA product for a proposal.
+ * Strategy: prefer the lowest kwhRate × escalator combination that covers
+ * the customer's needs, defaulting to the 2.99% escalator bucket (most common
+ * industry standard) and the minimum kwhRate within it.
+ */
+function pickBestProduct(products: LightReachPricingProduct[]): LightReachPricingProduct {
+  const targetEsc = 0.0299;
+  const bucket = products.filter((p) => Math.abs(p.escalationRate - targetEsc) < 0.0005);
+  const pool = bucket.length ? bucket : products;
+  return pool.slice().sort((a, b) => a.kwhRate - b.kwhRate)[0];
+}
+
+// Legacy account-based flow — kept for reference / potential future use.
 export async function createAccount(input: LightReachQuoteInput): Promise<string> {
   const body = {
     language: 'English',
@@ -121,28 +183,29 @@ export async function generateQuote(accountId: string): Promise<any> {
 }
 
 export async function quotePPA(input: LightReachQuoteInput): Promise<LightReachQuoteResult> {
-  logger.info('[lightreach] quotePPA start', { address: input.address });
-  const accountId = await createAccount(input);
-  logger.info('[lightreach] account created', { accountId });
-  try {
-    await attachSystemDesign(accountId, input.systemSizeKw, input.annualProductionKwh);
-  } catch (e) {
-    logger.warn('[lightreach] attachSystemDesign failed, continuing', { err: (e as any)?.message });
+  logger.info('[lightreach] estimatedPricing start', { address: input.address });
+  const products = await estimatedPricing(input);
+  logger.info('[lightreach] estimatedPricing returned', { count: products.length });
+  if (!products.length) {
+    throw new Error('LightReach estimatedPricing returned no products');
   }
-  const quote = await generateQuote(accountId);
-  logger.info('[lightreach] quote returned', { accountId, keys: Object.keys(quote || {}) });
-
-  // Unknown response shape until first real call — extract common candidate fields.
-  const raw = quote || {};
+  const best = pickBestProduct(products);
+  const firstMonthly = best.monthlyPayments?.[0]?.totalMonthlyPayment ?? best.monthlyPayments?.[0]?.monthlyPayment;
+  logger.info('[lightreach] picked best product', {
+    productId: best.productId,
+    kwhRate: best.kwhRate,
+    escalationRate: best.escalationRate,
+    monthly: firstMonthly,
+  });
   return {
-    accountId,
-    quoteId: raw.id || raw.quoteId,
-    ratePerKwh: raw.ratePerKwh || raw.rate || raw.pricePerKwh,
-    escalator: raw.escalator || raw.annualEscalator,
-    term: raw.term || raw.termYears,
-    monthlyPayment: raw.monthlyPayment || raw.firstYearMonthlyPayment,
-    year1Savings: raw.year1Savings || raw.firstYearSavings,
-    lifetimeSavings: raw.lifetimeSavings || raw.totalSavings,
-    raw,
+    accountId: '',
+    quoteId: best.productId,
+    ratePerKwh: best.kwhRate,
+    escalator: best.escalationRate,
+    term: best.term ?? 25,
+    monthlyPayment: firstMonthly,
+    year1Savings: undefined,
+    lifetimeSavings: undefined,
+    raw: { best, allCount: products.length },
   };
 }
