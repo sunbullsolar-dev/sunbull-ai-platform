@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { relayDequeue, relayResult, relayOptions, relayStatus } from '../controllers/lightreachController';
+import { relayDequeue, relayResult, relayOptions, relayStatus, goodleapCaptureTokens } from '../controllers/lightreachController';
 
 const router = Router();
 
@@ -25,5 +25,7 @@ router.options('/result', relayOptions);
 router.get('/dequeue', relayDequeue);
 router.post('/result', relayResult);
 router.get('/status', relayStatus);
+router.options('/goodleap-tokens', relayOptions);
+router.post('/goodleap-tokens', goodleapCaptureTokens);
 
 export default router;

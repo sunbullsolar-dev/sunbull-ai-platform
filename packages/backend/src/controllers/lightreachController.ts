@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { dequeue, deliverResult, stats, RelayTarget } from '../services/lightreachRelay';
+import { setTokens as setGoodleapTokens, tokenStats as goodleapTokenStats } from '../services/goodleapTokens';
 import logger from '../utils/logger';
 
 /**
@@ -63,5 +64,21 @@ export const relayOptions = async (_req: Request, res: Response) => {
 
 export const relayStatus = async (req: Request, res: Response) => {
   if (!requireToken(req, res)) return;
-  res.json({ success: true, data: stats() });
+  res.json({ success: true, data: { ...stats(), goodleapTokens: goodleapTokenStats() } });
+};
+
+// Browser capture snippet POSTs captured GoodLeap auth headers here.
+export const goodleapCaptureTokens = async (req: Request, res: Response) => {
+  if (!requireToken(req, res)) return;
+  const origin = (req.headers.origin as string) || 'https://origin.goodleap.com';
+  if (origin === 'https://origin.goodleap.com') {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const { authorization, xClientMetadata, organizationId } = req.body || {};
+  if (!authorization || typeof authorization !== 'string') {
+    return res.status(400).json({ success: false, error: 'authorization required' });
+  }
+  setGoodleapTokens({ authorization, xClientMetadata, organizationId });
+  res.json({ success: true });
 };
