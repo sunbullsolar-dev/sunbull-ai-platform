@@ -37,7 +37,11 @@ export const generateProposal = async (req: Request, res: Response) => {
       // Resolve ZIP: take the LAST 5-digit token in the address, not the first
       // (first is typically the street number, e.g. "21922 Gresham St...91304").
       const zipMatches = [...(lead.address || '').matchAll(/\b(\d{5})(?:-\d{4})?\b/g)];
-      const zipCode = zipMatches.length ? zipMatches[zipMatches.length - 1][1] : '';
+      let zipCode = zipMatches.length ? zipMatches[zipMatches.length - 1][1] : '';
+      if (!zipCode && roofAnalysis.postalCode) {
+        zipCode = roofAnalysis.postalCode;
+        logger.info('Derived ZIP from roofAnalysis.postalCode', { zipCode });
+      }
 
       // Real utility tariff lookup
       const utilityData = await lookupUtilityRates(lead.utility || null, zipCode);

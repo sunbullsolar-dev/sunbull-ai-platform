@@ -20,6 +20,7 @@ export interface RoofAnalysis {
   maxArrayPanelsCount: number;
   latitude: number;
   longitude: number;
+  postalCode?: string;
   source: 'google-solar' | 'google-solar-estimated';
 }
 
@@ -117,6 +118,7 @@ export const analyzeRoof = async (address: string): Promise<RoofAnalysis> => {
       maxArrayPanelsCount: solar.maxArrayPanelsCount || 0,
       latitude: geo.latitude,
       longitude: geo.longitude,
+      postalCode: geo.postalCode,
       source: 'google-solar',
     };
 
@@ -137,6 +139,7 @@ export const analyzeRoof = async (address: string): Promise<RoofAnalysis> => {
         maxArrayPanelsCount: 20,
         latitude: geo.latitude,
         longitude: geo.longitude,
+        postalCode: geo.postalCode,
         source: 'google-solar-estimated',
       };
     }
